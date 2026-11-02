@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1720">
+<title>Rueda de closet</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#0f1720;--panel:#17212c;--line:#263443;--tx:#e6edf3;--mut:#8b9bab;--ac:#2fb7a0;--warn:#e0a83a;--bad:#e05a4f;--ok:#4cc38a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-bottom:72px}
+header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:12px 16px;display:flex;align-items:center;gap:10px}
+header h1{font-size:17px;margin:0;flex:1}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--mut)}
+.dot.on{background:var(--ok);box-shadow:0 0 0 4px rgba(76,195,138,.18)}
+main{padding:12px 16px;max-width:720px;margin:0 auto}
+section{display:none}section.act{display:block}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 12px}
+.card h2{font-size:14px;margin:0 0 8px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+button{font:inherit;border:1px solid var(--line);background:#1f2b38;color:var(--tx);border-radius:10px;padding:10px 14px;cursor:pointer}
+button.pri{background:var(--ac);border-color:var(--ac);color:#04221d;font-weight:700}
+button.big{width:100%;padding:18px;font-size:18px}
+button:disabled{opacity:.45}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row>*{flex:1 1 auto}
+label{display:block;font-size:13px;color:var(--mut);margin:8px 0 3px}
+input,select,textarea{width:100%;font:inherit;background:#0c131a;color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:9px}
+.mut{color:var(--mut);font-size:13px}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:13px;word-break:break-all}
+.tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:99px;background:#263443;color:var(--mut);margin-left:6px}
+.tag.nuevo{background:rgba(224,168,58,.18);color:var(--warn)}
+.dev{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line);cursor:pointer}
+.dev:first-child{border-top:0}
+.dev .n{flex:1;min-width:0}
+.dev .c{font-variant-numeric:tabular-nums;color:var(--mut);font-size:13px;text-align:right}
+.ev{padding:8px 0;border-top:1px solid var(--line)}
+.ev:first-child{border-top:0}
+#ultimo{min-height:64px}
+.flash{animation:fl .6s}
+@keyframes fl{from{background:rgba(47,183,160,.25)}to{background:var(--panel)}}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:14px}
+th,td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right}
+th:first-child,td:first-child{text-align:left}
+tr.cur td{color:var(--ac);font-weight:700}
+.bar{height:6px;background:#263443;border-radius:3px;overflow:hidden;min-width:50px}
+.bar i{display:block;height:100%;background:var(--ac)}
+.big-num{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;border-radius:0;background:none;color:var(--mut);padding:14px 4px;font-size:13px}
+nav button.act{color:var(--ac);font-weight:700}
+.banner{background:rgba(224,168,58,.12);border:1px solid rgba(224,168,58,.4);color:var(--warn);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:14px}
+dialog{background:var(--panel);color:var(--tx);border:1px solid var(--line);border-radius:14px;width:min(520px,calc(100% - 32px));padding:16px}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+</style>
+</head>
+<body>
+<header><span class="dot" id="dot"></span><h1>Rueda de closet</h1><span class="mut" id="estado">detenido</span></header>
+<main>
+<div class="banner" id="sinNfc" hidden>Este navegador no tiene Web NFC (solo Chrome en Android). Está activo el <b>modo demo</b>: las lecturas son simuladas con el modelo de <span class="mono">sim_medidor.py</span>.</div>
+
+<!-- ESCANEAR -->
+<section id="t-scan" class="act">
+  <div class="card"><button class="pri big" id="btnScan">Empezar a escanear</button>
+    <p class="mut" style="margin:8px 0 0">Acerca un tag, tarjeta o llavero NFC a la zona de antena del teléfono. Cada lectura queda guardada en este teléfono.</p>
+    <div class="row" id="demoRow" hidden style="margin-top:8px"><button id="btnDemo">Simular lectura</button></div>
+  </div>
+  <div class="card" id="ultimo"><h2>Última lectura</h2><div class="mut">Sin lecturas todavía.</div></div>
+  <div class="card"><h2>Actividad reciente</h2><div id="eventos"></div></div>
+</section>
+
+<!-- DISPOSITIVOS -->
+<section id="t-dev">
+  <div class="card"><div class="row"><input id="filtro" placeholder="Buscar por nombre, UID o categoría"><select id="orden" style="flex:0 0 140px"><option value="last">Más reciente</option><option value="count">Más leídos</option><option value="alias">Nombre</option></select></div></div>
+  <div class="card"><h2 id="devTit">Dispositivos</h2><div id="lista"></div></div>
+</section>
+
+<!-- MEDICIÓN -->
+<section id="t-med">
+  <div class="card"><h2>Barrido de alcance (calibra d50)</h2>
+    <p class="mut" style="margin-top:0">Pon el teléfono a una altura fija sobre el tag (usa separadores de cartón o acrílico). Cada <b>intento</b> abre una ventana de lectura y mide si el tag responde y cuánto tarda. Repite N veces por altura.</p>
+    <div class="row">
+      <div><label>Alturas (mm)</label><input id="mAlt" value="0,5,10,15,20,25,30,35"></div>
+      <div style="flex:0 0 90px"><label>N por altura</label><select id="mN"><option>10</option><option selected>20</option><option>30</option></select></div>
+    </div>
+    <div class="row">
+      <div><label>Desalineación r (mm)</label><input id="mR" type="number" value="0" min="0"></div>
+      <div><label>Ventana (ms)</label><input id="mVen" type="number" value="2000" min="300" step="100"></div>
+    </div>
+    <label>Teléfono / funda (para comparar clases)</label><input id="mTel" placeholder="ej. Pixel 8 con funda 2 mm">
+    <label>Tag esperado</label><select id="mTag"><option value="">Cualquiera</option></select>
+    <div class="row" style="margin-top:12px"><button class="pri" id="mIni">Nueva sesión</button></div>
+  </div>
+  <div class="card" id="mPanel" hidden>
+    <div class="row" style="align-items:flex-end">
+      <div><div class="mut">Altura actual</div><div class="big-num" id="mCurH">–</div></div>
+      <div style="text-align:right"><div class="mut">Intento</div><div class="big-num" id="mCurI">–</div></div>
+    </div>
+    <button class="pri big" id="mGo" style="margin-top:10px">Intento</button>
+    <div class="row" style="margin-top:8px"><button id="mUndo">Deshacer</button><button id="mSkip">Saltar altura</button><button id="mFin">Terminar</button></div>
+    <p class="mut" id="mMsg" style="margin:8px 0 0"></p>
+  </div>
+  <div class="card" id="mRes" hidden><h2>Resultado</h2>
+    <table><thead><tr><th>Altura</th><th>Éxitos</th><th>P(lectura)</th><th></th><th>lat p50</th></tr></thead><tbody id="mTab"></tbody></table>
+    <p style="margin:10px 0 0">d50 estimado: <b id="mD50">–</b> <span class="mut" id="mClase"></span></p>
+  </div>
+  <div class="card"><h2>Sesiones guardadas</h2><div id="mSes"></div></div>
+</section>
+
+<!-- DATOS -->
+<section id="t-dat">
+  <div class="card"><h2>Exportar</h2>
+    <div class="row"><button id="xJson">Respaldo completo (JSON)</button></div>
+    <div class="row" style="margin-top:8px"><button id="xDev">Dispositivos (CSV)</button><button id="xMed">Mediciones (CSV)</button></div>
+    <p class="mut">El CSV de mediciones se analiza en el PC con <span class="mono">analizar_barrido.py</span>.</p>
+  </div>
+  <div class="card"><h2>Importar respaldo</h2><input type="file" id="imp" accept="application/json,.json"></div>
+  <div class="card"><h2>Almacenamiento</h2><p class="mut" id="almac"></p><button id="borrar">Borrar todo</button></div>
+</section>
+</main>
+
+<nav>
+  <button data-t="scan" class="act">Escanear</button><button data-t="dev">Dispositivos</button><button data-t="med">Medición</button><button data-t="dat">Datos</button>
+</nav>
+
+<dialog id="dlg"><form method="dialog" id="dlgForm">
+  <h2 style="margin:0 0 4px;font-size:17px" id="dTit"></h2><div class="mono mut" id="dUid"></div>
+  <label>Nombre</label><input id="dAlias" placeholder="ej. Llavero oficina">
+  <label>Categoría</label><select id="dCat"><option>Tag / sticker</option><option>Tarjeta</option><option>Llavero</option><option>Pulsera / wearable</option><option>Estación AnclaBici</option><option>Otro</option></select>
+  <label>Notas</label><textarea id="dNot" rows="2"></textarea>
+  <div class="mut" id="dInfo" style="margin-top:8px"></div>
+  <div class="row" style="margin-top:12px"><button value="del" id="dDel">Eliminar</button><button value="cancel">Cerrar</button><button value="ok" class="pri">Guardar</button></div>
+</form></dialog>
+
+<script>
+"use strict";
+const KEY = "lectorNFC.v1";
+const HAS_NFC = "NDEFReader" in window;
+let S = {devices:{}, events:[], sesiones:[]};
+try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(S, JSON.parse(raw)); } catch (e) {}
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { alert("No se pudo guardar: " + e.message); } }
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fecha = t => new Date(t).toLocaleString("es-CL", {dateStyle:"short", timeStyle:"medium"});
+const vibra = p => { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} };
+
+/* ---------- Pestañas ---------- */
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("act", x === b));
+  document.querySelectorAll("section").forEach(s => s.classList.toggle("act", s.id === "t-" + b.dataset.t));
+  if (b.dataset.t === "dev") pintaLista();
+  if (b.dataset.t === "dat") pintaAlmac();
+});
+
+/* ---------- Decodificación NDEF ---------- */
+function decodeRec(r){
+  const out = {tipo: r.recordType, media: r.mediaType || "", id: r.id || ""};
+  try {
+    if (!r.data) { out.valor = ""; return out; }
+    const u8 = new Uint8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength);
+    if (r.recordType === "text") out.valor = new TextDecoder(r.encoding || "utf-8").decode(u8);
+    else if (r.recordType === "url" || r.recordType === "absolute-url") out.valor = new TextDecoder().decode(u8);
+    else if (r.recordType === "mime" && /json|text|xml/.test(r.mediaType || "")) out.valor = new TextDecoder().decode(u8);
+    else if (r.recordType === "smart-poster" && r.toRecords) out.valor = r.toRecords().map(x => decodeRec(x).valor).join(" | ");
+    else out.valor = [...u8.slice(0, 32)].map(b => b.toString(16).padStart(2, "0")).join(" ") + (u8.length > 32 ? ` … (${u8.length} B)` : "");
+  } catch (e) { out.valor = "(no decodificable)"; }
+  return out;
+}
+
+/* ---------- Registro de lecturas ---------- */
+let escuchando = null; // callback de la sesión de medición
+function onRead(uid, records, latMs){
+  const recs = (records || []).map(decodeRec);
+  const key = uid || ("sinUID:" + (recs[0] ? recs[0].valor : "vacío"));
+  if (escuchando) { escuchando(key, latMs); return; }
+  const ahora = Date.now();
+  let d = S.devices[key], nuevo = !d;
+  if (!d) d = S.devices[key] = {uid: key, alias: "", cat: "Tag / sticker", notas: "", first: ahora, last: 0, count: 0};
+  d.last = ahora; d.count++; d.records = recs;
+  S.events.unshift({ts: ahora, uid: key, n: recs.length});
+  if (S.events.length > 2000) S.events.length = 2000;
+  save();
+  vibra(nuevo ? [80, 60, 80] : 60);
+  pintaUltimo(d, nuevo); pintaEventos(); pintaTags();
+}
+function onReadError(){
+  S.events.unshift({ts: Date.now(), uid: null, err: "Tag detectado pero sin NDEF legible (p. ej. MIFARE Classic o tarjeta bancaria)"});
+  save(); vibra([30, 40, 30, 40, 30]); pintaEventos();
+}
+
+function nombre(d){ return d.alias || ("Sin nombre · " + d.uid.slice(-8)); }
+function pintaUltimo(d, nuevo){
+  const c = $("ultimo");
+  const recs = (d.records || []).map(r => `<div class="mono"><b>${esc(r.tipo)}</b>${r.media ? " · " + esc(r.media) : ""}: ${esc(r.valor) || "<span class='mut'>(vacío)</span>"}</div>`).join("") || "<div class='mut'>Sin registros NDEF (tag vacío o formateable).</div>";
+  c.innerHTML = `<h2>Última lectura</h2><div><b>${esc(nombre(d))}</b>${nuevo ? '<span class="tag nuevo">nuevo</span>' : `<span class="tag">${d.count}ª vez</span>`}</div>
+    <div class="mono mut">${esc(d.uid)}</div><div style="margin-top:6px">${recs}</div>
+    <div class="row" style="margin-top:8px"><button data-uid="${esc(d.uid)}" onclick="abreDev(this.dataset.uid)">${nuevo ? "Ponerle nombre" : "Editar"}</button></div>`;
+  c.classList.remove("flash"); void c.offsetWidth; c.classList.add("flash");
+}
+function pintaEventos(){
+  $("eventos").innerHTML = S.events.slice(0, 15).map(e => {
+    if (e.err) return `<div class="ev"><span class="mut">${fecha(e.ts)}</span><br>${esc(e.err)}</div>`;
+    const d = S.devices[e.uid];
+    return `<div class="ev"><span class="mut">${fecha(e.ts)}</span><br>${esc(d ? nombre(d) : e.uid)}</div>`;
+  }).join("") || "<div class='mut'>Nada aún.</div>";
+}
+
+/* ---------- Escaneo continuo ---------- */
+let ctrl = null;
+async function iniciarScan(){
+  if (!HAS_NFC) { setEstado(true, "demo"); return; }
+  detenerScan();
+  ctrl = new AbortController();
+  const r = new NDEFReader();
+  r.onreading = e => onRead(e.serialNumber, e.message.records);
+  r.onreadingerror = onReadError;
+  try { await r.scan({signal: ctrl.signal}); setEstado(true, "escaneando"); }
+  catch (e) { setEstado(false, "error"); alert("No se pudo iniciar NFC: " + e.message + "\n\nRevisa que NFC esté activado en Ajustes y que hayas dado el permiso a Chrome."); }
+}
+function detenerScan(){ if (ctrl) { ctrl.abort(); ctrl = null; } setEstado(false, "detenido"); }
+function setEstado(on, txt){ $("dot").classList.toggle("on", on); $("estado").textContent = txt; $("btnScan").textContent = on ? "Detener" : "Empezar a escanear"; $("btnScan").classList.toggle("pri", !on); }
+$("btnScan").onclick = () => (ctrl || $("estado").textContent === "demo") ? (detenerScan()) : iniciarScan();
+
+/* ---------- Modo demo (modelo de sim_medidor.py) ---------- */
+const DEMO_UIDS = ["04:a2:3b:1c:7f:61:80", "04:11:9e:52:aa:3d:81", "e2:7c:00:9a"];
+const S_LOG = 2.0, R_LAT = 25.0, D50_DEMO = 25;
+const pRead = (d, d50, r=0) => 1 / (1 + Math.exp((d - d50 * Math.exp(-((r / R_LAT) ** 2))) / S_LOG));
+function latDemo(d, d50, r=0){ const z = Math.sqrt(-2 * Math.log(Math.random())) * Math.cos(2 * Math.PI * Math.random()); const d50e = d50 * Math.exp(-((r / R_LAT) ** 2)); return Math.exp(Math.log(180) + .25 * z) + 450 / (1 + Math.exp(-(d - d50e) / S_LOG)); }
+function recDemo(txt){ return {recordType: "text", encoding: "utf-8", data: new DataView(new TextEncoder().encode(txt).buffer)}; }
+$("btnDemo").onclick = () => { const i = Math.floor(Math.random() * DEMO_UIDS.length); onRead(DEMO_UIDS[i], i === 2 ? [] : [recDemo("demo tag " + (i + 1))]); };
+
+/* ---------- Dispositivos ---------- */
+function pintaLista(){
+  const f = $("filtro").value.trim().toLowerCase(), o = $("orden").value;
+  let ds = Object.values(S.devices).filter(d => !f || (d.alias + " " + d.uid + " " + d.cat + " " + d.notas).toLowerCase().includes(f));
+  ds.sort(o === "count" ? (a, b) => b.count - a.count : o === "alias" ? (a, b) => nombre(a).localeCompare(nombre(b)) : (a, b) => b.last - a.last);
+  $("devTit").textContent = `Dispositivos (${ds.length})`;
+  $("lista").innerHTML = ds.map(d => `<div class="dev" data-uid="${esc(d.uid)}" onclick="abreDev(this.dataset.uid)"><div class="n"><b>${esc(nombre(d))}</b><span class="tag">${esc(d.cat)}</span><div class="mono mut">${esc(d.uid)}</div></div>
+    <div class="c">${d.count} lect.<br>${fecha(d.last)}</div></div>`).join("") || "<div class='mut'>Aún no hay dispositivos. Escanea uno.</div>";
+}
+$("filtro").oninput = pintaLista; $("orden").onchange = pintaLista;
+let dlgUid = null;
+function abreDev(uid){
+  const d = S.devices[uid]; if (!d) return; dlgUid = uid;
+  $("dTit").textContent = nombre(d); $("dUid").textContent = uid;
+  $("dAlias").value = d.alias; $("dCat").value = d.cat; $("dNot").value = d.notas;
+  const recs = (d.records || []).map(r => `${esc(r.tipo)}: ${esc(r.valor)}`).join("<br>");
+  $("dInfo").innerHTML = `Visto por primera vez: ${fecha(d.first)}<br>Última: ${fecha(d.last)} · ${d.count} lecturas${recs ? "<br><span class='mono'>" + recs + "</span>" : ""}`;
+  $("dlg").showModal();
+}
+$("dlg").addEventListener("close", () => {
+  const v = $("dlg").returnValue, d = S.devices[dlgUid]; if (!d) return;
+  if (v === "ok") { d.alias = $("dAlias").value.trim(); d.cat = $("dCat").value; d.notas = $("dNot").value.trim(); }
+  if (v === "del") { if (!confirm("¿Eliminar este dispositivo y su historial?")) return; delete S.devices[dlgUid]; S.events = S.events.filter(e => e.uid !== dlgUid); }
+  save(); pintaLista(); pintaEventos(); pintaTags();
+});
+function pintaTags(){
+  const sel = $("mTag"), cur = sel.value;
+  sel.innerHTML = '<option value="">Cualquiera</option>' + Object.values(S.devices).map(d => `<option value="${esc(d.uid)}">${esc(nombre(d))}</option>`).join("");
+  sel.value = cur;
+}
+
+/* ---------- Medición: barrido de alturas ---------- */
+let ses = null;
+function intentoReal(ventana){
+  return new Promise(res => {
+    const c = new AbortController(), t0 = performance.now(), r = new NDEFReader();
+    let listo = false;
+    const fin = v => { if (listo) return; listo = true; c.abort(); escuchando = null; res(v); };
+    escuchando = (uid, _) => { if (!ses.tag || uid === ses.tag) fin({ok: true, lat: Math.round(performance.now() - t0), uid}); };
+    r.onreading = e => onRead(e.serialNumber, e.message.records);
+    r.scan({signal: c.signal}).catch(e => fin({ok: false, lat: null, err: e.message}));
+    setTimeout(() => fin({ok: false, lat: null}), ventana);
+  });
+}
+function intentoDemo(h, ventana){
+  return new Promise(res => {
+    const ok = Math.random() < pRead(h, D50_DEMO, ses.r), lat = Math.round(latDemo(h, D50_DEMO, ses.r));
+    setTimeout(() => res(ok && lat < ventana ? {ok: true, lat, uid: DEMO_UIDS[0]} : {ok: false, lat: null}), Math.min(ok ? lat : ventana, 600));
+  });
+}
+$("mIni").onclick = () => {
+  const alturas = $("mAlt").value.split(/[,; ]+/).map(Number).filter(x => isFinite(x) && x >= 0);
+  if (!alturas.length) return alert("Indica al menos una altura.");
+  detenerScan();
+  ses = {id: Date.now(), fecha: new Date().toISOString(), telefono: $("mTel").value.trim(), tag: $("mTag").value,
+         r: Number($("mR").value) || 0, N: Number($("mN").value), ventana: Number($("mVen").value) || 2000,
+         alturas, hi: 0, intentos: [], demo: !HAS_NFC};
+  $("mPanel").hidden = false; $("mRes").hidden = false; pintaMed();
+  $("mMsg").textContent = `Coloca el teléfono a ${alturas[0]} mm y pulsa Intento.`;
+};
+$("mGo").onclick = async () => {
+  if (!ses || ses.hi >= ses.alturas.length) return;
+  const h = ses.alturas[ses.hi];
+  $("mGo").disabled = true; $("mMsg").textContent = "Leyendo…";
+  const r = ses.demo ? await intentoDemo(h, ses.ventana) : await intentoReal(ses.ventana);
+  ses.intentos.push({h, ok: r.ok, lat: r.lat, uid: r.uid || "", ts: Date.now()});
+  vibra(r.ok ? 40 : [20, 30, 20]);
+  const hechos = ses.intentos.filter(x => x.h === h).length;
+  if (hechos >= ses.N) { ses.hi++; if (ses.hi < ses.alturas.length) { $("mMsg").textContent = `Listo ${h} mm. Sube a ${ses.alturas[ses.hi]} mm.`; vibra([100, 80, 100]); } else { terminar(); } }
+  else $("mMsg").textContent = (r.ok ? `✓ ${r.lat} ms` : "✗ sin lectura") + (r.err ? " · " + r.err : "") + " — retira y vuelve a apoyar el teléfono si el tag no responde de nuevo.";
+  $("mGo").disabled = false; pintaMed();
+};
+$("mUndo").onclick = () => { if (!ses || !ses.intentos.length) return; const u = ses.intentos.pop(); ses.hi = ses.alturas.indexOf(u.h); pintaMed(); };
+$("mSkip").onclick = () => { if (!ses) return; ses.hi++; if (ses.hi >= ses.alturas.length) terminar(); else { $("mMsg").textContent = `Sube a ${ses.alturas[ses.hi]} mm.`; pintaMed(); } };
+$("mFin").onclick = terminar;
+function terminar(){
+  if (!ses) return;
+  if (ses.intentos.length) { const {hi, ...guardar} = ses; guardar.d50 = estimaD50(resumen(ses)); S.sesiones.unshift(guardar); save(); }
+  $("mMsg").textContent = "Sesión guardada."; $("mPanel").hidden = true; pintaMed(); ses = null; pintaSes();
+}
+function resumen(s){
+  return s.alturas.map(h => { const xs = s.intentos.filter(x => x.h === h), ok = xs.filter(x => x.ok);
+    const lats = ok.map(x => x.lat).sort((a, b) => a - b);
+    return {h, n: xs.length, k: ok.length, p: xs.length ? ok.length / xs.length : null, lat50: lats.length ? lats[Math.floor(lats.length / 2)] : null}; });
+}
+// Mismo estimador que estima_d50() de sim_medidor.py: primera altura con P<0.5 e interpolación lineal
+function estimaD50(rs){
+  const v = rs.filter(x => x.n > 0);
+  if (!v.length) return null;
+  const i = v.findIndex(x => x.p < 0.5);
+  if (i === -1) return {valor: v[v.length - 1].h, cota: ">="};
+  if (i === 0) return {valor: v[0].h, cota: "<="};
+  const a = v[i - 1], b = v[i];
+  return {valor: +(a.h + (a.p - 0.5) / (a.p - b.p) * (b.h - a.h)).toFixed(1), cota: ""};
+}
+// Clases de sim_medidor.py: d50 medio A=32, B=25, C=18 mm
+function clase(d50){ if (!d50) return ""; const c = [["A", 32], ["B", 25], ["C", 18]].sort((x, y) => Math.abs(x[1] - d50) - Math.abs(y[1] - d50))[0]; return `≈ clase ${c[0]} (d50 medio ${c[1]} mm)`; }
+function pintaMed(){
+  if (!ses) return;
+  const done = ses.hi >= ses.alturas.length, h = ses.alturas[ses.hi];
+  $("mCurH").textContent = done ? "fin" : h + " mm";
+  $("mCurI").textContent = done ? "–" : `${ses.intentos.filter(x => x.h === h).length + 1}/${ses.N}`;
+  const rs = resumen(ses);
+  $("mTab").innerHTML = rs.map(x => `<tr class="${x.h === h && !done ? "cur" : ""}"><td>${x.h} mm</td><td>${x.k}/${x.n}</td><td>${x.p == null ? "–" : Math.round(x.p * 100) + "%"}</td>
+    <td><div class="bar"><i style="width:${(x.p || 0) * 100}%"></i></div></td><td>${x.lat50 == null ? "–" : x.lat50 + " ms"}</td></tr>`).join("");
+  const d = estimaD50(rs);
+  $("mD50").textContent = d ? `${d.cota}${d.valor} mm` : "–"; $("mClase").textContent = d && !d.cota ? clase(d.valor) : "";
+}
+function pintaSes(){
+  $("mSes").innerHTML = S.sesiones.map(s => `<div class="ev"><b>${esc(s.telefono || "Sin teléfono")}</b>${s.demo ? '<span class="tag">demo</span>' : ""}<br>
+    <span class="mut">${fecha(s.id)} · r=${s.r} mm · ${s.intentos.length} intentos · d50 ${s.d50 ? s.d50.cota + s.d50.valor + " mm" : "–"}</span></div>`).join("") || "<div class='mut'>Ninguna todavía.</div>";
+}
+
+/* ---------- Datos ---------- */
+function descarga(nombreArch, texto, tipo){ const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([texto], {type: tipo})); a.download = nombreArch; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+const csv = filas => filas.map(f => f.map(v => { v = v == null ? "" : String(v); return /[",;\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(",")).join("\n");
+const hoy = () => new Date().toISOString().slice(0, 10);
+$("xJson").onclick = () => descarga(`lector_nfc_${hoy()}.json`, JSON.stringify(S, null, 1), "application/json");
+$("xDev").onclick = () => descarga(`dispositivos_${hoy()}.csv`, csv([["uid", "nombre", "categoria", "notas", "primera", "ultima", "lecturas", "contenido"]].concat(
+  Object.values(S.devices).map(d => [d.uid, d.alias, d.cat, d.notas, new Date(d.first).toISOString(), new Date(d.last).toISOString(), d.count, (d.records || []).map(r => r.tipo + ":" + r.valor).join(" | ")]))), "text/csv");
+$("xMed").onclick = () => descarga(`mediciones_${hoy()}.csv`, csv([["sesion", "telefono", "demo", "desalineacion_mm", "ventana_ms", "altura_mm", "exito", "latencia_ms", "uid", "ts"]].concat(
+  S.sesiones.flatMap(s => s.intentos.map(x => [s.id, s.telefono, s.demo ? 1 : 0, s.r, s.ventana, x.h, x.ok ? 1 : 0, x.lat, x.uid, new Date(x.ts).toISOString()])))), "text/csv");
+$("imp").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { const j = JSON.parse(await f.text()); if (!j.devices) throw new Error("no es un respaldo de Rueda de closet");
+    if (!confirm("Esto reemplaza los datos actuales de este teléfono. ¿Continuar?")) return;
+    S = Object.assign({devices: {}, events: [], sesiones: []}, j); save(); refrescar(); alert("Respaldo importado."); }
+  catch (err) { alert("No se pudo importar: " + err.message); }
+  e.target.value = "";
+};
+$("borrar").onclick = () => { if (confirm("¿Borrar todos los dispositivos, lecturas y mediciones de este teléfono?") && confirm("Seguro? No se puede deshacer.")) { S = {devices: {}, events: [], sesiones: []}; save(); refrescar(); } };
+function pintaAlmac(){ let b = 0; try { b = (localStorage.getItem(KEY) || "").length; } catch (e) {} $("almac").textContent = `${Object.keys(S.devices).length} dispositivos · ${S.events.length} lecturas · ${S.sesiones.length} sesiones de medición · ${(b / 1024).toFixed(1)} KB. Los datos viven solo en este teléfono: exporta un respaldo de vez en cuando.`; }
+
+function refrescar(){ pintaEventos(); pintaTags(); pintaSes(); pintaLista(); pintaAlmac(); }
+if (!HAS_NFC) { $("sinNfc").hidden = false; $("demoRow").hidden = false; }
+refrescar();
+if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>

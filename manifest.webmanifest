@@ -1,0 +1,15 @@
+{
+  "name": "Rueda de closet",
+  "short_name": "Rueda de closet",
+  "description": "Registra y enlista los tags NFC que lee este teléfono, y mide su alcance.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1720",
+  "theme_color": "#0f1720",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
